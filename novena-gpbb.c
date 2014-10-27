@@ -87,8 +87,7 @@ int write_kernel_memory(long offset, long value, int virtualized, int size) {
   return old_value;
 }
 
-#if 0
-void romulate(int onoff) {
+void setvddio(int high) {
   volatile unsigned short *cs0;
 
   if(mem_16)
@@ -106,13 +105,44 @@ void romulate(int onoff) {
   mem_16 = mmap(0, 0xffff, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x08040000);
   cs0 = (volatile unsigned short *)mem_16;
 
-  if( onoff )
-    cs0[F(FPGA_W_ROMULATE_CTL)] |= 0x1;
+  if( high )  // set to 5V
+    cs0[F(FPGA_W_GPBB_CTL)] |= 0x8000;
   else
-    cs0[F(FPGA_W_ROMULATE_CTL)] &= 0xFFFE;
+    cs0[F(FPGA_W_GPBB_CTL)] &= 0x7FFF;
 
 }
-#endif
+
+void oe_state(int drive, int channel) {
+  volatile unsigned short *cs0;
+
+  if(mem_16)
+    munmap(mem_16, 0xFFFF);
+  if(fd)
+    close(fd);
+
+  fd = open("/dev/mem", O_RDWR);
+  if( fd < 0 ) {
+    perror("Unable to open /dev/mem");
+    fd = 0;
+    return;
+  }
+
+  mem_16 = mmap(0, 0xffff, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x08040000);
+  cs0 = (volatile unsigned short *)mem_16;
+  
+  if( channel == OE_A ) {
+    if( drive ) 
+      cs0[F(FPGA_W_GPBB_CTL)] |= 0x1;
+    else
+      cs0[F(FPGA_W_GPBB_CTL)] &= 0xFFFE;
+  } else {
+    if( drive ) 
+      cs0[F(FPGA_W_GPBB_CTL)] |= 0x2;
+    else
+      cs0[F(FPGA_W_GPBB_CTL)] &= 0xFFFD;
+  }
+}
+
 
 void print_usage(char *progname) {
   printf("Usage:\n"
@@ -122,6 +152,10 @@ void print_usage(char *progname) {
 	"\t-da <value> set DAC A to value (0-1024 decimal)\n"
 	"\t-db <value> set DAC B to value (0-1024 decimal)\n"
 	"\t-a  <chan> set and read channel <chan> from ADC\n"
+	"\t-hv set VDD-IO to high (5V) voltage\n"
+	"\t-lv set VDD-IO to low (nom 3.3V unless you trimmed it) voltage\n"
+	"\t-oea <value> drive I/O bank A (value = 1 means drive, 0 means tristate)\n"
+	"\t-oeb <value> drive I/O bank B (value = 1 means drive, 0 means tristate)\n"
 	"\t-testcs1 Check that burst-access area (CS1) works\n"
 	 "", progname);
 }
@@ -525,6 +559,46 @@ int main(int argc, char **argv) {
       adc_chan(a1);
       
       printf( "ADC channel %d: %d\n", a1, adc_read() );;
+    }
+
+    else if(!strcmp(*argv, "-hv")) {
+      argc--;
+      argv++;
+      setvddio(1);
+    }
+
+    else if(!strcmp(*argv, "-lv")) {
+      argc--;
+      argv++;
+      setvddio(0);
+    }
+
+    else if(!strcmp(*argv, "-oea")) {
+      argc--;
+      argv++;
+      if( argc != 1 ) {
+	printf( "usage -oea <drive>\n" );
+	return 1;
+      }
+
+      a1 = strtoul(*argv, NULL, 10);
+      argc--;
+      argv++;
+      oe_state(a1, OE_A);
+    }
+
+    else if(!strcmp(*argv, "-oeb")) {
+      argc--;
+      argv++;
+      if( argc != 1 ) {
+	printf( "usage -oeb <drive>\n" );
+	return 1;
+      }
+
+      a1 = strtoul(*argv, NULL, 10);
+      argc--;
+      argv++;
+      oe_state(a1, OE_B);
     }
 
     else if(!strcmp(*argv, "-testcs1")) {

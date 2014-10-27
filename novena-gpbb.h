@@ -44,3 +44,7 @@
 
 #define FPGA_RB_LOOP0       0x0C041000
 #define FPGA_RB_LOOP1       0x0C041008
+
+
+#define OE_A  0
+#define OE_B  1
