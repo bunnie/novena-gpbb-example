@@ -42,7 +42,7 @@ int read_kernel_memory(long offset, int virtualized, int size) {
     else {
       fd = open("/dev/mem", O_RDWR);
       if( fd < 0 ) {
-	perror("Unable to open /dev/mem");
+	perror("Unable to open /dev/mem. Must be run with root permissions.");
 	fd = 0;
 	return -1;
       }
@@ -97,7 +97,7 @@ void setvddio(int high) {
 
   fd = open("/dev/mem", O_RDWR);
   if( fd < 0 ) {
-    perror("Unable to open /dev/mem");
+    perror("Unable to open /dev/mem. Must be run with root permissions.");
     fd = 0;
     return;
   }
@@ -122,7 +122,7 @@ void oe_state(int drive, int channel) {
 
   fd = open("/dev/mem", O_RDWR);
   if( fd < 0 ) {
-    perror("Unable to open /dev/mem");
+    perror("Unable to open /dev/mem. Must be run with root permissions.");
     fd = 0;
     return;
   }
@@ -143,6 +143,94 @@ void oe_state(int drive, int channel) {
   }
 }
 
+unsigned char gpbb_output_state(char port) {
+  volatile unsigned short *cs0;
+
+  if(mem_16)
+    munmap(mem_16, 0xFFFF);
+  if(fd)
+    close(fd);
+
+  fd = open("/dev/mem", O_RDWR);
+  if( fd < 0 ) {
+    perror("Unable to open /dev/mem. Must be run with root permissions.");
+    fd = 0;
+    return 0;
+  }
+
+  mem_16 = mmap(0, 0xffff, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x08040000);
+  cs0 = (volatile unsigned short *)mem_16;
+  
+  if( port == PORT_A ) {
+    return cs0[F(FPGA_W_CPU_TO_DUT)] & 0xFF;
+  } else {
+    return (cs0[F(FPGA_W_CPU_TO_DUT)] >> 8) & 0xFF;
+  }
+}
+
+unsigned char gpbb_read() {
+  volatile unsigned short *cs0;
+
+  if(mem_16)
+    munmap(mem_16, 0xFFFF);
+  if(fd)
+    close(fd);
+
+  fd = open("/dev/mem", O_RDWR);
+  if( fd < 0 ) {
+    perror("Unable to open /dev/mem. Must be run with root permissions.");
+    fd = 0;
+    return 0;
+  }
+
+  mem_16 = mmap(0, 0xffff, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x08040000);
+  cs0 = (volatile unsigned short *)mem_16;
+  
+  return cs0[F(FPGA_R_DUT_TO_CPU)] & 0xFF;
+}
+
+void gpbb_port_write(char port, char type, unsigned short val) {
+  volatile unsigned short *cs0;
+
+  if(mem_16)
+    munmap(mem_16, 0xFFFF);
+  if(fd)
+    close(fd);
+
+  fd = open("/dev/mem", O_RDWR);
+  if( fd < 0 ) {
+    perror("Unable to open /dev/mem. Must be run with root permissions.");
+    fd = 0;
+    return;
+  }
+
+  mem_16 = mmap(0, 0xffff, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0x08040000);
+  cs0 = (volatile unsigned short *)mem_16;
+
+  switch( type ) {
+  case PORT_VAL:
+    printf( "writing %02x to port %c\n", val, port ? 'b' : 'a' );
+    if( port == PORT_A ) {
+      cs0[F(FPGA_W_CPU_TO_DUT)] = (val & 0xFF) | (cs0[F(FPGA_W_CPU_TO_DUT)] & 0xFF00);
+    } else {
+      cs0[F(FPGA_W_CPU_TO_DUT)] = ((val & 0xFF) << 8) | (cs0[F(FPGA_W_CPU_TO_DUT)] & 0x00FF);
+    }
+    break;
+  case PORT_SET:
+    if( port == PORT_B )
+      val += 8;
+    cs0[F(FPGA_W_CPU_TO_DUT)] |= 1 << val;
+    break;
+  case PORT_CLR:
+    if( port == PORT_B )
+      val += 8;
+    cs0[F(FPGA_W_CPU_TO_DUT)] &= ~(1 << val);
+    break;
+  default:
+    printf( "gpbb_port_write() received improper operation type code\n" );
+  }
+}
+
 
 void print_usage(char *progname) {
   printf("Usage:\n"
@@ -154,8 +242,15 @@ void print_usage(char *progname) {
 	"\t-a  <chan> set and read channel <chan> from ADC\n"
 	"\t-hv set VDD-IO to high (5V) voltage\n"
 	"\t-lv set VDD-IO to low (nom 3.3V unless you trimmed it) voltage\n"
+	"\t* GPBB has two 8-bit output-only ports (A,B), and one 8-bit input port\n"
 	"\t-oea <value> drive I/O bank A (value = 1 means drive, 0 means tristate)\n"
 	"\t-oeb <value> drive I/O bank B (value = 1 means drive, 0 means tristate)\n"
+	"\t-p <port> return last written <port> value in hex, port is [a,b] (note these ports are output-only)\n"
+	"\t-p <port> <hex value> set <port> to <hex value>\n"
+	"\t-p_set <port> <bit>  set <port> <bit>\n"
+	"\t-p_clr <port> <bit>  clear <port> <bit>\n"
+	"\t-rp return the value of the 8-bit input port\n"
+	"\t* CS1 isn't useful in the design, but loopback code provided as a template\n"
 	"\t-testcs1 Check that burst-access area (CS1) works\n"
 	 "", progname);
 }
@@ -443,7 +538,7 @@ int testcs1() {
 
   fd = open("/dev/mem", O_RDWR);
   if( fd < 0 ) {
-    perror("Unable to open /dev/mem");
+    perror("Unable to open /dev/mem. Must be run with root permissions.");
     fd = 0;
     return 0;
   }
@@ -491,6 +586,7 @@ int testcs1() {
 int main(int argc, char **argv) {
   char *prog = argv[0];
   unsigned int a1;
+  char port;
   
   argv++;
   argc--;
@@ -600,6 +696,88 @@ int main(int argc, char **argv) {
       argv++;
       oe_state(a1, OE_B);
     }
+
+    else if(!strcmp(*argv, "-p")) {
+      argc--;
+      argv++;
+      if( argc < 1 ) {
+	printf( "usage -p <port> [hex value]\n" );
+	return 1;
+      }
+      if( argv[0][0] == 'a' || argv[0][0] == 'A' )
+	port = PORT_A;
+      else if ( argv[0][0] == 'b' || argv[0][0] == 'B' )
+	port = PORT_B;
+      else {
+	printf( "Invalid port, must be one of a,b\n" );
+	break;
+      }
+      argc--;
+      argv++;
+      if( argc == 0 ) {
+	// it's a read op
+	printf( "%c: %02x\n", port ? 'b' : 'a', gpbb_output_state( port ) );
+      } else {
+	// it's a write op
+	a1 = strtoul(*argv, NULL, 16);
+	argc--;
+	argv++;
+	gpbb_port_write( port ? PORT_B : PORT_A, PORT_VAL, (unsigned short) a1 );
+      }
+    }
+
+    else if(!strcmp(*argv, "-p_set")) {
+      argc--;
+      argv++;
+      if( argc != 2 ) {
+	printf( "usage -p_set <port> <bit>\n" );
+	return 1;
+      }
+      if( argv[0][0] == 'a' || argv[0][0] == 'A' )
+	port = PORT_A;
+      else if ( argv[0][0] == 'b' || argv[0][0] == 'B' )
+	port = PORT_B;
+      else {
+	printf( "Invalid port, must be one of a,b\n" );
+	break;
+      }
+      argc--;
+      argv++;
+      a1 = strtoul(*argv, NULL, 10);
+      argc--;
+      argv++;
+      gpbb_port_write( port ? PORT_B : PORT_A, PORT_SET, (unsigned short) a1 );
+    }
+
+    else if(!strcmp(*argv, "-p_clr")) {
+      argc--;
+      argv++;
+      if( argc != 2 ) {
+	printf( "usage -p_set <port> <bit>\n" );
+	return 1;
+      }
+      if( argv[0][0] == 'a' || argv[0][0] == 'A' )
+	port = PORT_A;
+      else if ( argv[0][0] == 'b' || argv[0][0] == 'B' )
+	port = PORT_B;
+      else {
+	printf( "Invalid port, must be one of a,b\n" );
+	break;
+      }
+      argc--;
+      argv++;
+      a1 = strtoul(*argv, NULL, 10);
+      argc--;
+      argv++;
+      gpbb_port_write( port ? PORT_B : PORT_A, PORT_CLR, (unsigned short) a1 );
+    }
+
+    else if(!strcmp(*argv, "-rp")) {
+      argc--;
+      argv++;
+      printf( "input port: %02x\n", gpbb_read());
+    }
+
 
     else if(!strcmp(*argv, "-testcs1")) {
       argc--;

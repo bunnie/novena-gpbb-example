@@ -48,3 +48,8 @@
 
 #define OE_A  0
 #define OE_B  1
+#define PORT_A  0
+#define PORT_B  1
+#define PORT_VAL 0
+#define PORT_SET 1
+#define PORT_CLR 2
