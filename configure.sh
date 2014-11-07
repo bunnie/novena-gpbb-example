@@ -20,4 +20,4 @@ echo "configuring FPGA"
 dd if=${bitfile} of=/dev/spidev2.0 bs=128
                                                              
 echo "turning on clock to FPGA"
-devmem2 0x020c8160 w 0x00000D2B
+./devmem2 0x020c8160 w 0x00000D2B

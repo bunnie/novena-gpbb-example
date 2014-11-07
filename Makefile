@@ -6,6 +6,7 @@ MY_LIBS +=
 
 all: $(OBJECTS)
 	$(CC) $(LIBS) $(LDFLAGS) $(OBJECTS) $(MY_LIBS) -o $(EXEC)
+	gcc -o devmem2 devmem2.c
 
 clean:
 	rm -f $(EXEC) $(OBJECTS)
