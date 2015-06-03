@@ -17,7 +17,7 @@ echo 1 > /sys/class/gpio/gpio135/value 2> /dev/null
                                       
 echo "configuring FPGA"
                                       
-dd if=${bitfile} of=/dev/spidev2.0 bs=128
+dd if=${bitfile} of=/dev/spidev2.0 bs=32
                                                              
 echo "turning on clock to FPGA"
 ./devmem2 0x020c8160 w 0x00000D2B
