@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include <linux/i2c-dev.h>
+#include <linux/i2c.h>
 #include <sys/ioctl.h>
 
 #include "adc108s022.h"

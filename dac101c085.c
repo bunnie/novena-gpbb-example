@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include <linux/i2c-dev.h>
+#include <linux/i2c.h>
 #include <sys/ioctl.h>
 
 #include "dac101c085.h"
