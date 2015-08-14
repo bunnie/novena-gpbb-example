@@ -52,8 +52,10 @@ gpio_wait()
 		echo -n "."
 	done
 	echo " timeout"
+	exit 1
 }
 
+set -e
 echo "exporting GPIOs"
 gpio_export INITN in
 gpio_export DONE in
