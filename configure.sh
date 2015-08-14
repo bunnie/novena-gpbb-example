@@ -67,7 +67,7 @@ gpio_set RESETN 1
 gpio_wait INITN 1
 
 echo "configuring FPGA"
-dd if=${bitfile} of=/dev/spidev2.0 bs=128
+dd if=${bitfile} of=/dev/spidev2.0 bs=32
 gpio_wait DONE 1
 
 echo "turning on clock to FPGA"
